@@ -1,0 +1,62 @@
+# Code for the complication calculation part of the project
+# Will be needing an object for storing Volt and Current preferably filled in the main part by txt or something similar
+# For now one of these will be our normative behaviour, no complication storage, the other will be one that is filled, compaired, emptyed and then filled again
+# Will need a method for filling these objects
+# Will need a method for compairing the data stored in the objects
+
+class CurrentVoltageObject():
+    
+    def __init__(self):
+        self.voltage = []
+        self.current = []
+        
+    def fill(self, voltcurr): # takes in an [volt[], current[]] array, how long it is is up to the filler method
+        self.voltage = voltcurr[0]
+        self.current = voltcurr[1]
+
+def storage(): # Could be a sampling class that fills the text document If this would have been a live run, a bit unescessary for this for we will be reading txt prob
+    # If we would have a storage method we could put a max of ex 100 values in the matrix [Volt,Cur] sampled and inserted and when that was done we would compair
+    humdinger = 0
+
+def filler(CurrentVoltageObject): # Takes in one of the votage and current objects, CurrentVoltageObject: storedNormal, runValues
+    with open(NameOfVoltaeCurrentFile.txt) as f: # Depending on how values are stored well see quite different ways to structure this. 
+        # For each voltage there must exist a current value
+        # Would be nice to separate them here already
+        # Put voltage and current in a matrix that I send over to the voltage and current seting method in the CurrentVoltageObject
+        # Matrix disposition [volt[], current[]], a max size/ max sample need to be defined, is probably quite long, but it need to be.
+        # Question: How long should a sample be, one pulse (heart beat, systole dystole, or a set amount of time)
+        humdinger = 0
+
+def compairing(storedNormal, runValues):
+    totalNormal= 0
+    totalRun = 0
+    for val1 in storedNormal:
+        totalNormal = float(totalNormal + val1)
+    for val2 in runValues:
+        totalRun = float(totalNormal + val2)     
+    totalNormalAvrg = float(totalNormal/len(storedNormal))
+    totalRunAvrg = float(totalRun/len(totalRun))
+
+    difference = float(totalNormalAvrg/totalRunAvrg)
+
+    if (): # decide a limit perhaps not done here but should be done in main, perhaps the only thing we return is difference or perhaps we start flipping flags
+        humdinger = 0
+    return difference
+
+
+def main(): #make a little choice menu where the user can choose:
+    # to run a calibration part and fill storedNormal, 
+    # to run the program whilst sampling (either a txt or something else) and have the possibility to quit
+    running = True
+    storedNormal = CurrentVoltageObject() 
+    runValues = CurrentVoltageObject()
+    filler(storedNormal)
+
+    if (running == True):
+        if compairing(storedNormal,runValues)<0.9 or compairing(storedNormal, runValues)>1.1:
+            print("there be constrictions, yarr, send out the alarms")
+        else:
+             print("No worries she runs like a lemur")     
+    
+
+main()    
