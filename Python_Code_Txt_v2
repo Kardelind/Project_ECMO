@@ -142,6 +142,8 @@ def back_to_csv(saveMatchVal, savedAvg, saveCon):
     wallpower_avg = []
     Power_avg = []
     mec_eff=[]
+    H_p = []
+    H_p_avg = []
     # Making it into arrays to go into csv structure
     for i in range(len(saveMatchVal)):
         valve1.append(saveMatchVal[i].valve1)
@@ -151,12 +153,12 @@ def back_to_csv(saveMatchVal, savedAvg, saveCon):
         for k in range(len(LPM_values)):
             if saveMatchVal[i].LPM == LPM_values[k]:
                 mec_eff.append(eff_mec[k])
-
         pressure.append(saveMatchVal[i].pressure)
         wallpower.append(saveMatchVal[i].wallpower)
         power.append(saveMatchVal[i].P)
+        H_p.append(saveMatchVal[i].LPM*saveMatchVal[i].pressure*mmHg_to_Pa*LPM_to_m3_s)
         # To ensure the constriction values appears next to the compaired values
-        if(i % 2 == 1):
+        if(i % 2 != 1):
             saveCon.insert(i, 0)
 
     for j in range(len(savedAvg)):
@@ -167,6 +169,7 @@ def back_to_csv(saveMatchVal, savedAvg, saveCon):
         Pressure_avg.append(savedAvg[j].pressure)
         wallpower_avg.append(savedAvg[j].wallpower)
         Power_avg.append(savedAvg[j].P)
+        H_p_avg.append(savedAvg[j].LPM*savedAvg[j].pressure*mmHg_to_Pa*LPM_to_m3_s)
     # Due to the way pandas work all arrays need to have the same length, so I just add empty cells    
     for k in range(len(saveMatchVal)-len(savedAvg)):
         valve1_avg.append("")
@@ -176,6 +179,7 @@ def back_to_csv(saveMatchVal, savedAvg, saveCon):
         Pressure_avg.append("")
         wallpower_avg.append("")
         Power_avg.append("")
+        H_p_avg.append("")
     # Structure needed to match cvs format
     df = pandas.DataFrame(
         {"Valve 1 setting": valve1,
@@ -184,21 +188,23 @@ def back_to_csv(saveMatchVal, savedAvg, saveCon):
          "RPM": RPM,
          "Pressure": pressure,
          "Wallpower": wallpower,
-         "Power": power,
+         "Calculated power": power,
+         "Hydraulic power": H_p,
          " ": "",
          "Constriction Index": saveCon,
          "kq": k_q,
          "Resistance": R_inner,
          "PWM_eff": POWER_FACTOR,
          "P_h/P_m": mec_eff,
-         "Averages": " ",
+         "Just values": " ",
          "valve 1 setting_avg": valve1_avg,
          "valve 2 setting_avg": valve2_avg,
          "LPM_avg": LPM_avg,
          "RPM_avg": RPM_avg,
          "Pressure_avg": Pressure_avg,
          "Wallpower_avg": wallpower_avg,
-         "Power_avg": Power_avg
+         "Power_avg": Power_avg,
+         "Hydraulic Power avg": H_p_avg
          })
     df.to_csv("output.csv", index=False)
 
@@ -330,12 +336,13 @@ def main():
     calArr = []
     conArr = []
     # Separating calibration values, when V1=0 and V2=0 from constriction values V1!=0
-    for j in range(len(QPList)):
-        if QPList[j].valve1 == 0 and QPList[j].valve2 == 0:
-            calArr.append(QPList[j])
+    for j in range(len(avrQP)):
+        if avrQP[j].valve1 == 0 and avrQP[j].valve2 == 0:
+            calArr.append(avrQP[j])
 
-        if QPList[j].valve1 != 0 or QPList[j].valve2 !=0:
-            conArr.append(QPList[j])
+        if avrQP[j].valve1 != 0 or avrQP[j].valve2 !=0:
+            conArr.append(avrQP[j])
+
     # Here we have calculated power QP values are valve, LPM, pressure and Power
     # This could be a separate method
     saveMatchVal = []
