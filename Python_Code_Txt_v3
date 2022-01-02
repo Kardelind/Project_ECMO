@@ -1,0 +1,386 @@
+#----------------------------------------------------------
+# Author: Jonathan Kardelind
+# Name of code: Power_calculations.py
+# Date of work: 20 september 2020 to 2 january 2021
+# Purpose of writing: Master thesis project - Mathematical representation and simulation of an ECMO pump unit
+# Purpose of code: To calculate power and efficeincies using data from an ECMO mock at KTH
+#
+#---------------------------------------------------------- 
+
+# USED EXTERNAL LIBRARIES
+# pip install openpyxl
+# pip install pandas
+# pip install numpy, should come with pandas
+
+from os import system
+import pandas
+import math
+import configparser
+
+# ------------ SETTINGS --------------------------------------------------------
+# INI SETTINGS WILL BE CHANGED ACCORDING TO VALUES IN SETTINGS.INI file
+# CAN BE CHANGED FOR MORE EXACT VALUES WHEN MORE IS KNOWN ABOUT THE MACHINE
+# ------------ INI SETTINGS ----------------------------------------------------
+RPM_max = 5500                  # SETTING, From datasheet (abbot manual)
+V_max = 12                      # SETTING, Assumed based on screen voltage demand of 12V (abbot manual)
+Idle_wallpower = 31.3           # SETTING, From Power measurer
+R_inner = 1                    # SETTING, This could be measured with a potentiometer (find connector)
+POWER_FACTOR = 1                # SETTING, Ramp up and down result in some losses, From litterature, SMPS suplies have a 68-90% eff, 80% is normal
+valve_settings = 5              # SETTING, The max number of valve settings
+LPM_values = [3,4,5]            # SETTING, Flows of interest, would be more if we had flow focused experimental data
+cvs_values_names = []           # SETTING, Column names  
+csv_file_location = "data.csv"  # SETTING, Change to place for csv file
+# ------------ INI SETTINGS END -------------------------------------------------
+
+# ------------ GLOBAL VALUES ----------------------------------------------------
+eff_mec = []                    # CALC, calculated in method
+mmHg_to_Pa = 133.322            # CALC, Conversion value
+LPM_to_m3_s = 1/(60*1000)       # CALC, Conversion value
+RPM_to_w = 2*math.pi/60         # CALC, Conversion value
+
+w_max = RPM_max*2*math.pi/60    # CALC working with SI units demands angular velocity
+k_q = V_max/w_max               # CALC, Assumed using values from abbot manual
+settings_file_location = "settings.ini" # Location of settings.ini file
+# ------------- GLOBAL VALUES END ------------------------------------------------
+# ------------- SETTINGS END -------------------------------------------------------
+
+# ------------- CLASSES ------------------------------------------------------------
+
+# Class to store values of intresst from the csv file, do notice that valve, LPM, RPM, pressure and wallpower is needed
+class Sample_of_csv():
+    def __init__(self, valve1,valve2, LPM, RPM, pressure, wallpower):
+        self.valve1 = valve1
+        self.valve2 = valve2
+        self.LPM = LPM
+        self.RPM = RPM
+        self.pressure = pressure
+        self.wallpower = wallpower
+
+# Class to store values in (could perhaps just be a list), choosen for structure
+class QP():
+    def __init__(self, valve1, valve2, LPM, RPM, pressure, wallpower, P):
+        self.valve1 = valve1
+        self.valve2 = valve2
+        self.LPM = LPM
+        self.RPM = RPM
+        self.pressure = pressure
+        self.wallpower = wallpower
+        self.P = P
+
+# ------------ CLASSES END --------------------------------------------------------
+
+
+# ------------ FUNCTIONS ----------------------------------------------------------
+
+# Calculating estimated power from hydraulic power and mechanical losses. Added electrical transformation losses
+def power_calc(pressure, LPM, RPM):
+
+    for i in range(len(LPM_values)):
+        if LPM == LPM_values[i]:
+            eff = eff_mec[i]
+    
+    w = RPM*2*math.pi/60
+    Q = LPM/(60*1000)
+    deltaP = pressure*133.322
+    P_hydraulic = Q*deltaP
+    P_mechanical = P_hydraulic/eff
+    M = P_mechanical/w
+    I_a = M/k_q
+    P_heat_loss = R_inner*I_a**2
+    P_el = P_heat_loss + P_mechanical
+    P_el_wall = P_el/(POWER_FACTOR)
+    return P_el_wall
+
+# method for picking out and storing values, do notice that this is connected to Sample_of_csv class
+def filter_csv(csvd):
+    # Note, in the original csv "RPM" vs "RPM ", code will whine if not , check names in csv
+    # cvs_values_names can be changed above
+    csvd_Q_p = csvd[cvs_values_names]
+    # This defines values of interest, right now it's based upon the Lisa excel
+    r = LPM_values      # LPM of interest, Global value, check above to change
+    values = []
+    for i in r:
+        # Pick out the flows we are looking at
+        LPMarr = csvd_Q_p[((csvd_Q_p["LPM"] <= i+i*0.01) &
+                           (csvd_Q_p["LPM"] >= i-i*0.01))].to_numpy()
+        if(len(LPMarr) > 1):
+            values.append(LPMarr)
+    
+    q = 0
+    s_arr = []
+    for j in range(len(values)):
+        for k in range(len(values[j])):
+            # values[j][k] gives a data row, the [l] gets the position imn row
+            for l in range(len(values[j][k])):
+                q = q+1
+                if q == 1:
+                    valve1 = values[j][k][l]
+                if q == 2:
+                    valve2 = values[j][k][l]
+                if q == 3:
+                    LPM = values[j][k][l]
+                if q == 4:
+                    RPM = values[j][k][l]
+                if q == 5:
+                    mmHg = values[j][k][l]
+                if q == 6:
+                    q = 0
+                    wallpower = values[j][k][l]
+                   
+                    S = Sample_of_csv(valve1, valve2, LPM, RPM, mmHg, wallpower)
+
+                    s_arr.append(S)
+                    
+    return s_arr
+
+# Values going into csv, saveMatchVal is a list of QP-objects
+# There is perhaps a nicer way to this
+def back_to_csv(saveMatchVal, savedAvg, saveCon):
+    valve1 = []
+    valve2 = []
+    LPM = []
+    RPM = []
+    pressure = []
+    wallpower = []
+    power = []
+    valve1_avg = []
+    valve2_avg=[]
+    LPM_avg = []
+    RPM_avg = []
+    Pressure_avg = []
+    wallpower_avg = []
+    Power_avg = []
+    mec_eff=[]
+    H_p = []
+    H_p_avg = []
+    # Making it into arrays to go into csv structure
+    for i in range(len(saveMatchVal)):
+        valve1.append(saveMatchVal[i].valve1)
+        valve2.append(saveMatchVal[i].valve2)
+        LPM.append(saveMatchVal[i].LPM)
+        RPM.append(saveMatchVal[i].RPM)
+        for k in range(len(LPM_values)):
+            if saveMatchVal[i].LPM == LPM_values[k]:
+                mec_eff.append(eff_mec[k])
+        pressure.append(saveMatchVal[i].pressure)
+        wallpower.append(saveMatchVal[i].wallpower)
+        power.append(saveMatchVal[i].P)
+        H_p.append(saveMatchVal[i].LPM*saveMatchVal[i].pressure*mmHg_to_Pa*LPM_to_m3_s)
+        # To ensure the constriction values appears next to the compaired values
+        if(i % 2 != 1):
+            saveCon.insert(i, 0)
+
+    for j in range(len(savedAvg)):
+        valve1_avg.append(savedAvg[j].valve1)
+        valve2_avg.append(savedAvg[j].valve2)
+        LPM_avg.append(savedAvg[j].LPM)
+        RPM_avg.append(savedAvg[j].RPM)
+        Pressure_avg.append(savedAvg[j].pressure)
+        wallpower_avg.append(savedAvg[j].wallpower)
+        Power_avg.append(savedAvg[j].P)
+        H_p_avg.append(savedAvg[j].LPM*savedAvg[j].pressure*mmHg_to_Pa*LPM_to_m3_s)
+    # Due to the way pandas work all arrays need to have the same length, so I just add empty cells    
+    for k in range(len(saveMatchVal)-len(savedAvg)):
+        valve1_avg.append("")
+        valve2_avg.append("")
+        LPM_avg.append("")
+        RPM_avg.append("")
+        Pressure_avg.append("")
+        wallpower_avg.append("")
+        Power_avg.append("")
+        H_p_avg.append("")
+    # Structure needed to match cvs format
+    df = pandas.DataFrame(
+        {"Valve 1 setting": valve1,
+        "Valve 2 setting": valve2,
+         "LPM": LPM,
+         "RPM": RPM,
+         "Pressure": pressure,
+         "Wallpower": wallpower,
+         "Calculated power": power,
+         "Hydraulic power": H_p,
+         " ": "",
+         "Constriction Index": saveCon,
+         "kq": k_q,
+         "Resistance": R_inner,
+         "PWM_eff": POWER_FACTOR,
+         "P_h/P_m": mec_eff,
+         "Just values": " ",
+         "valve 1 setting_avg": valve1_avg,
+         "valve 2 setting_avg": valve2_avg,
+         "LPM_avg": LPM_avg,
+         "RPM_avg": RPM_avg,
+         "Pressure_avg": Pressure_avg,
+         "Wallpower_avg": wallpower_avg,
+         "Power_avg": Power_avg,
+         "Hydraulic Power avg": H_p_avg
+         })
+    df.to_csv("output.csv", index=False)
+
+# calculate for specific flow the efficiency = P_hydraulic/P_mechanical
+def calcEff(csvSamples):
+
+    lister = []
+    for j in range(len(LPM_values)):
+        for i in range(len(csvSamples)):
+            if (LPM_values[j] == csvSamples[i].LPM):
+                lister.append([LPM_values[j],csvSamples[i]])
+
+    j=0
+    w1 = []
+    P_h = []
+    P_el1 =[]
+    ef=[]
+    for i in LPM_values:
+        while j < len(lister) and i == lister[j][0]:
+            w1.append(lister[j][1].RPM*RPM_to_w)
+            P_h.append(lister[j][1].LPM*LPM_to_m3_s*lister[j][1].pressure*mmHg_to_Pa)
+            P_el1.append(((lister[j][1].wallpower-Idle_wallpower)*POWER_FACTOR))
+            j = j + 1   
+
+        x=1/0.2
+        r=1
+        while r>0.0005:
+            r_save=0
+            for k in range(len(P_el1)):
+                r_save=r_save+(P_el1[k]-(x*P_h[k]+(x**2)*(P_h[k]**2)/((w1[k]*k_q)**2))*R_inner)
+            if (0>r_save):
+                r=r_save**2
+                stepsize = 0.00001
+                if (r>100): # To speed up the process
+                    stepsize = stepsize*100
+                x=x-stepsize
+                
+            if (0<=r_save):
+                r=r_save**2
+                stepsize = 0.00001
+                if (r>100): # To speed up the process
+                    stepsize = stepsize*100
+                x=x+stepsize    
+
+        ef.append(1/x)
+        print("efficiency P_h/P_m for "+ str(i) +  "LPM is = "  + str(1/x))
+        w1 = []
+        P_h =[]
+        P_el1 =[]
+
+    global eff_mec
+    eff_mec = ef
+
+# Go through stored values, if flow and valve is the same average those values 
+def averageQP(QPL):
+    valveSet=[]    # The possible valve settings, only used here
+    for i in range(valve_settings):
+       valveSet.append(i)
+    avgStore = []
+    # This section compairs values and if there's more the none of the same LPM and valve value, 
+    # it calculate averages of them
+    for v in valveSet:
+        for w in valveSet:
+            for l in LPM_values:
+                # Momentary list for 
+                avg = []
+                for i in range(len(QPL)):
+                    if (v == QPL[i].valve1 and w == QPL[i].valve2 and (l <= QPL[i].LPM + QPL[i].LPM*0.01 and l >= QPL[i].LPM - QPL[i].LPM*0.01)):
+                        avg.append(QPL[i])
+                if (len(avg) > 0): # So if we put 0 we get at least one of every value, worth
+                    P_tot = 0
+                    wallpower_tot = 0
+                    RPM_tot = 0
+                    pressure_tot = 0
+                    for j in range(len(avg)):
+                        P_tot = P_tot + avg[j].P
+                        wallpower_tot = wallpower_tot + avg[j].wallpower
+                        RPM_tot = RPM_tot + avg[j].RPM
+                        pressure_tot = pressure_tot + avg[j].pressure
+                    P_avg = P_tot/len(avg)
+                    wallpower_avg = wallpower_tot/len(avg)
+                    RPM_avg = RPM_tot/len(avg)
+                    pressure_avg = pressure_tot/len(avg)
+                    avgStore.append(QP(avg[0].valve1,avg[0].valve2, l, RPM_avg, pressure_avg, wallpower_avg, P_avg))
+    return avgStore  # Works but could certainly be made prettier
+
+
+# sets settings from the "settings.ini" file
+def setSetting(settings):
+    Config = configparser.ConfigParser()
+    Config.read(settings)    
+    global RPM_max 
+    RPM_max = int(Config.get("SETTINGS","RPM_max"))  
+    global Idle_wallpower
+    Idle_wallpower = float(Config.get("SETTINGS","Idle_wallpower")) 
+    global V_max           
+    V_max = float(Config.get("SETTINGS","V_max"))
+    global R_inner                      
+    R_inner = float(Config.get("SETTINGS","R_inner"))  
+    global POWER_FACTOR                 
+    POWER_FACTOR = float(Config.get("SETTINGS","POWER_FACTOR"))
+    global valve_settings
+    valve_settings = int(Config.get("SETTINGS","nr_valve_settings"))
+    global LPM_values               
+    LPM_values = eval(Config.get("SETTINGS","LPM_values"))
+    global cvs_values_names 
+    cvs_values_names = eval(Config.get("SETTINGS","cvs_values_names"))
+    global csv_file_location
+    csv_file_location = eval(Config.get("SETTINGS","csv_file_location")) 
+
+# ---------------- FUNCTIONS END --------------------------------------------------
+
+# ---------------- MAIN -----------------------------------------------------------
+# This main is case specific for the loop used at strömmningsmeckanik lab at KTH, 
+# but could be used for similar setups 
+def main():
+    print("working...")
+    # Apply settings from settings.ini file
+    setSetting(settings_file_location)
+    # Open up your doc filled with data, csv_file_location can be altered here or up at top
+    csvdoc = pandas.read_csv(csv_file_location)
+    # Picking out and storing the interesting values from csv List of Sample_of_csv
+    csvSamples = filter_csv(csvdoc) 
+    # Calculate efficiency using linear least square method 
+    calcEff(csvSamples)
+    QPList = []
+    # Calculating power from those values
+    for i in range(len(csvSamples)):
+        P = power_calc(csvSamples[i].pressure, csvSamples[i].LPM, csvSamples[i].RPM)
+        QPList.append(QP(csvSamples[i].valve1,csvSamples[i].valve2, csvSamples[i].LPM,
+                         csvSamples[i].RPM, csvSamples[i].pressure, (csvSamples[i].wallpower-Idle_wallpower), P))
+    # Calculate averages if there's values vith identical LPM and valve settings
+    avrQP = averageQP(QPList)
+    
+    # Separate values 
+    calArr = []
+    conArr = []
+    # Separating calibration values, when V1=0 and V2=0 from constriction values V1!=0
+    for j in range(len(avrQP)):
+        if avrQP[j].valve1 == 0 and avrQP[j].valve2 == 0:
+            calArr.append(avrQP[j])
+
+        if avrQP[j].valve1 != 0 or avrQP[j].valve2 !=0:
+            conArr.append(avrQP[j])
+
+    # Here we have calculated power QP values are valve, LPM, pressure and Power
+    # This could be a separate method
+    saveMatchVal = []
+    saveCon = []
+    # Compairing constriction values agains calculation values for same LPM
+    for k in range(len(calArr)):
+        for l in range(len(conArr)):
+            # added to capture and compair flow values +-1% away from eachother
+            if (calArr[k].LPM <= (conArr[l].LPM + conArr[l].LPM*0.01)) and (calArr[k].LPM >= (conArr[l].LPM - conArr[l].LPM*0.01)):
+                constrictionIndex = conArr[l].P/calArr[k].P
+                saveMatchVal.append(calArr[k])
+                saveMatchVal.append(conArr[l])
+                saveCon.append(constrictionIndex)
+
+    # Now let's store these values in a csv
+    back_to_csv(saveMatchVal, avrQP, saveCon)
+    
+    # Just for the ease of use, let's convert the csv to an excel from the get go
+    rf = pandas.read_csv("output.csv")
+    rf.to_excel("output.xlsx", index=None, header=True)
+    print("done")
+# --------------- MAIN END ---------------------------------------------------
+
+main()
+
