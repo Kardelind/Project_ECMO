@@ -1,0 +1,28 @@
+[SETTINGS]
+RPM_max: 5500                       
+V_max: 12
+Idle_wallpower: 31.3                     
+R_inner: 1                
+POWER_FACTOR: 0.7
+nr_valve_settings: 5
+LPM_values: [3,4,5]  
+cvs_values_names: ["Valve1", "Valve2","LPM", "RPM", "DP (mmHg)", "wallpower"]
+csv_file_location: "reworkedData.csv" 
+
+[Org_SETTINGS]
+RPM_max: 5500                       
+V_max: 12
+Idle_wallpower: 31.3                     
+R_inner: 1                  
+POWER_FACTOR: 0.7
+nr_valve_settings: 5
+LPM_values: [3,4,5]  
+cvs_values_names: ["Valve1", "Valve2","LPM", "RPM", "DP (mmHg)", "wallpower"]
+csv_file_location: "reworkedData.csv" 
+
+NOTE: Increasing R will increase P_h/P_m efficiency and decreasing POWER_FACTOR will have the same effect
+
+
+[END] 
+  
+       
