@@ -4,7 +4,7 @@
 # Date of work: 20 september 2020 to 2 january 2021
 # Purpose of writing: Master thesis project - Mathematical representation and simulation of an ECMO pump unit
 # Purpose of code: To calculate power and efficeincies using data from an ECMO mock at KTH
-#
+# GitHub: https://github.com/Kardelind/Project_ECMO
 #---------------------------------------------------------- 
 
 # USED EXTERNAL LIBRARIES
